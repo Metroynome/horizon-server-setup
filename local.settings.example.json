@@ -1,8 +1,8 @@
 {
     "defaultProfile":  "uya",
     "installRoot":  "./repos",
-    "generatedRoot":  "./data/generated",
     "dataRoot":  "./data",
+    "generatedRoot":  "./data/generated",
     "secretsFile":  "./local.secrets.json",
     "includePlugin":  true,
     "includePatch":  true,
