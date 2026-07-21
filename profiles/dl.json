@@ -5,7 +5,7 @@
                    11184
                ],
     "database":  {
-                     "name":  "Medius_Database",
+                     "name":  "Horizon_DL",
                      "user":  "sa",
                      "sqlAdminPassword":  "auto"
                  },
