@@ -1,0 +1,18 @@
+# Normalize text files in the repository.
+* text=auto
+
+# Scripts must stay LF for Bash on Linux/macOS/Git Bash/WSL.
+*.sh text eol=lf
+
+# Keep common project text files normalized.
+*.json text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.gitignore text eol=lf
+*.gitattributes text eol=lf
+
+# Windows convenience scripts, if added later.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf

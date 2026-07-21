@@ -1,0 +1,45 @@
+# Local/generated state
+local/
+workspace/
+workspace-*/
+repos/
+install/
+local.settings.json
+local.settings.*.json
+local.secrets.*.json
+local.secrets.json
+!local.settings.example.json
+*.local.json
+.env
+.env.*
+
+# Accidentally cloned Horizon repos / install roots
+horizon-server/
+horizon-server-database/
+horizon-server-database-middleware/
+horizon-docker/
+horizon-dns/
+horizon-uya-plugin/
+horizon-uya-patch/
+horizon-deadlocked-plugin/
+horizon-deadlocked-patch/
+horizon-deadlocked-middleware-plugin/
+
+# Runtime data if an install root is placed here
+database_data/
+database_backup/
+logs/
+
+# Temporary/cache files
+*.tmp
+*.bak
+*.swp
+__pycache__/
+.pytest_cache/
+
+# Logs and OS/editor noise
+*.log
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

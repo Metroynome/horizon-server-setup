@@ -1,0 +1,63 @@
+{
+  "id": "uya",
+  "name": "Ratchet & Clank: Up Your Arsenal",
+  "appIds": [
+    10684,
+    10683
+  ],
+  "database": {
+    "name": "Medius_Database",
+    "user": "sa",
+    "sqlAdminPassword": "auto"
+  },
+  "plugin": {
+    "repo": "horizon-uya-plugin",
+    "mediusPath": "out/medius",
+    "dmePath": "out/dme"
+  },
+  "patch": {
+    "repo": "horizon-uya-patch",
+    "miscPath": "misc",
+    "binPath": "bin"
+  },
+  "repos": [
+    {
+      "name": "horizon-server",
+      "https": "https://github.com/Horizon-Private-Server/horizon-server.git",
+      "ssh": "git@github.com:Horizon-Private-Server/horizon-server.git"
+    },
+    {
+      "name": "horizon-server-database-middleware",
+      "https": "https://github.com/Horizon-Private-Server/horizon-server-database-middleware.git",
+      "ssh": "git@github.com:Horizon-Private-Server/horizon-server-database-middleware.git"
+    },
+    {
+      "name": "horizon-server-database",
+      "https": "https://github.com/Horizon-Private-Server/horizon-server-database.git",
+      "ssh": "git@github.com:Horizon-Private-Server/horizon-server-database.git"
+    },
+    {
+      "name": "horizon-docker",
+      "https": "https://github.com/Horizon-Private-Server/horizon-docker.git",
+      "ssh": "git@github.com:Horizon-Private-Server/horizon-docker.git"
+    },
+    {
+      "name": "horizon-dns",
+      "https": "https://github.com/Horizon-Private-Server/horizon-dns.git",
+      "ssh": "git@github.com:Horizon-Private-Server/horizon-dns.git",
+      "kind": "dns"
+    },
+    {
+      "name": "horizon-uya-plugin",
+      "kind": "plugin",
+      "https": "https://github.com/Horizon-Private-Server/horizon-uya-plugin.git",
+      "ssh": "git@github.com:Horizon-Private-Server/horizon-uya-plugin.git"
+    },
+    {
+      "name": "horizon-uya-patch",
+      "kind": "patch",
+      "https": "https://github.com/Horizon-Private-Server/horizon-uya-patch.git",
+      "ssh": "git@github.com:Horizon-Private-Server/horizon-uya-patch.git"
+    }
+  ]
+}

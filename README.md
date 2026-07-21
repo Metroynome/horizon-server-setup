@@ -1,0 +1,254 @@
+# Horizon Server Setup
+
+Private Metroynome setup helper for local Horizon server installs.
+
+This repo is intentionally only orchestration. It clones the Horizon/private repos into a local ignored `local/` folder, generates local config, and starts Docker services.
+
+## Supported Hosts
+
+- Linux
+- macOS
+- Windows through Git Bash or WSL
+
+The scripts are portable Bash and use `python3` for JSON editing.
+
+## Requirements
+
+- `bash`
+- `git`
+- `python3`
+- Docker Desktop or Docker Engine with `docker compose`
+
+Windows users can run from Git Bash/WSL, or use the PowerShell wrappers `setup.ps1` and `run.ps1`.
+
+## First Run
+
+Run from an existing terminal window. Do not double-click `setup.sh` on Windows, because Git Bash may open a separate window and close before you can read the output.
+
+Git Bash / WSL / Linux / macOS:
+
+```bash
+./setup.sh uya
+```
+
+Windows PowerShell:
+
+```powershell
+.\setup.ps1 uya
+```
+
+For Deadlocked instead of UYA:
+
+```bash
+./setup.sh dl
+```
+
+Use SSH clone URLs if you have GitHub SSH access set up:
+
+```bash
+./setup.sh uya --ssh
+./setup.sh dl --ssh
+```
+
+If IP detection picks the wrong network adapter, pass the host LAN IP explicitly:
+
+```bash
+./setup.sh uya --ip 192.168.1.190
+```
+
+After setup, set the DNAS IP to the IP printed by the script. You can print it again later with `./run.sh dns`. If DNS is disabled for a dedicated server, handle DNS/routing outside this setup repo.
+
+For a server profile that should not use game-specific plugin, patch, or local DNS repos, disable them for one setup run:
+
+```bash
+./setup.sh uya --no-plugin
+./setup.sh uya --no-patch
+./setup.sh uya --no-dns
+./setup.sh uya --no-plugin --no-patch --no-dns
+```
+
+Each setup run writes a transcript under `logs/`, for example `logs/setup-20260720-193000.log`.
+
+## Local Settings
+
+On first run, `local.settings.json` is created from `local.settings.example.json`.
+
+Example:
+
+```json
+{
+  "defaultProfile": "uya",
+  "installRoot": "./local",
+  "secretsFile": "./local.secrets.json",
+
+  "includePlugin": true,
+  "includePatch": true,
+  "includeDns": true,
+
+  "cloneProtocol": "https",
+  "serverIp": "auto",
+  "startAfterSetup": true
+}
+```
+
+`local.settings.json`, `local.secrets.json`, `.env`, and `local/` are ignored by git.
+
+Set `includePlugin`, `includePatch`, or `includeDns` to `false` when a profile should run without game-specific plugins, patch downloads/mounts, or the local DNS helper. This is useful for Horizon server profiles that are not Ratchet & Clank games, or for dedicated servers where DNS is handled externally. You can also override those settings for one `run.sh` command with `--no-plugin`, `--no-patch`, or `--no-dns`.
+
+## Database And Secrets
+
+Each profile has its own database defaults in `profiles/<profile>.json`:
+
+```json
+"database": {
+  "name": "Medius_Database",
+  "user": "sa",
+  "sqlAdminPassword": "auto"
+}
+```
+
+`sqlAdminPassword` is the SQL Server administrator password used by the container as `HORIZON_MSSQL_SA_PASSWORD`. Horizon's current middleware image uses this same admin credential for database initialization and access, so the profile database user should stay `sa` unless the middleware image is changed to provision custom SQL users.
+
+When `sqlAdminPassword` is set to `auto`, setup writes the generated value to `local.secrets.json`:
+
+```json
+{
+  "profiles": {
+    "uya": {
+      "database": {
+        "sqlAdminPassword": "..."
+      },
+      "middlewarePassword": "..."
+    }
+  }
+}
+```
+
+Edit `local.secrets.json` if you want to change generated passwords locally. It is ignored by git. If you change `sqlAdminPassword` after SQL Server has already initialized a Docker volume, remove/recreate that profile's database volume or SQL Server may still expect the old admin password.
+
+Setup makes the SQL Docker volume profile-specific, such as `horizon_database_data_uya` or `horizon_database_data_dl`, so UYA and DL do not share database files even though the in-SQL database name remains `Medius_Database` for Horizon compatibility.
+
+To start with a fresh database for the active profile:
+
+```bash
+./run.sh delete-db
+./run.sh reset-db
+```
+
+`delete-db` stops services and removes the active profile DB volume. `reset-db` does the same thing, then runs the normal start sequence. Both commands show the active profile, volume name, and SQL database name, then require typing `delete <volume name>` before removing anything, such as `delete horizon_database_data_uya`.
+
+## Daily Commands
+
+Git Bash / WSL / Linux / macOS:
+
+```bash
+./run.sh help
+./run.sh start           # DNS, database, middleware, patch, plugin, then server
+./run.sh -a              # same as start
+./run.sh stop            # stop horizon-docker and horizon-dns
+./run.sh restart         # stop, then run the full start sequence
+./run.sh status          # show Horizon containers
+./run.sh dns             # show DNAS IP and sampled hostname mappings
+./run.sh logs            # follow horizon-server logs
+./run.sh middleware-logs # follow horizon-middleware logs
+./run.sh db-logs         # follow horizon-database logs
+./run.sh delete-db       # stop services and delete the active profile DB volume
+./run.sh reset-db        # delete active profile DB volume, then run start
+```
+
+Target individual services:
+
+```bash
+./run.sh -s              # recreate/start horizon-server
+./run.sh server-restart  # recreate horizon-server without rebuilding
+./run.sh -d              # recreate/start horizon-database
+./run.sh -m              # recreate/start horizon-middleware
+```
+
+DNS commands:
+
+```bash
+./run.sh dns-start       # start existing horizon-dns, or build/create it if missing
+./run.sh dns-stop        # stop horizon-dns
+./run.sh dns-build       # build horizon-dns image
+./run.sh dns-restart     # build and recreate horizon-dns
+```
+
+Profile-aware build commands:
+
+```bash
+./run.sh -p              # rebuild patch repos for defaultProfile
+./run.sh -l              # rebuild plugin repos for defaultProfile
+./run.sh -e              # rebuild patch repos, then plugin repos
+./run.sh -p dl           # rebuild Deadlocked patch once
+./run.sh --profile uya -l   # rebuild UYA plugin once
+./run.sh --profile dl -e    # rebuild Deadlocked patch repos, then plugin repos once
+./run.sh server --no-plugin # recreate server without plugin mounts once
+./run.sh restart --no-patch # restart stack without patch mounts once
+./run.sh start --no-dns    # start stack without horizon-dns once
+```
+
+Windows PowerShell wrappers pass through to the Bash scripts:
+
+```powershell
+.\run.ps1 help
+.\run.ps1 start
+.\run.ps1 -a
+.\run.ps1 stop
+.\run.ps1 dns
+.\run.ps1 logs
+.\run.ps1 -p dl
+.\run.ps1 --profile uya -l
+```
+
+## Command Reference
+
+`run.sh` and `run.ps1` support the same commands.
+
+| Command | Short option | What it does |
+| --- | --- | --- |
+| `start`, `up` | `-a` | Start DNS, database, middleware, build patch/plugin, then start server. |
+| `stop`, `down` | `-x` | Stop horizon-docker services and horizon-dns. |
+| `restart` | `-r` | Stop, then run the full start sequence. |
+| `status` | `-t` | Show Horizon container status. |
+| `server` | `-s` | Recreate/start only horizon-server. |
+| `server-restart` | | Recreate horizon-server without rebuilding. |
+| `database` | `-d` | Recreate/start only horizon-database. |
+| `middleware` | `-m` | Recreate/start only horizon-middleware. |
+| `logs` | | Follow horizon-server logs. |
+| `middleware-logs` | | Follow horizon-middleware logs. |
+| `db-logs` | | Follow horizon-database logs. |
+| `delete-db` | | Stop services and delete the active profile database volume. |
+| `reset-db` | | Delete the active profile database volume, then run the full start sequence. |
+| `dns` | | Show DNAS IP and sampled DNS mappings. |
+| `dns-build` | `-b` | Build the horizon-dns image. |
+| `dns-restart` | `-n` | Build and recreate horizon-dns. |
+| `rebuild-patch`, `build-patch` | `-p` | Rebuild patch repos for the active profile. |
+| `rebuild-plugin`, `build-plugin` | `-l` | Rebuild plugin repos for the active profile. |
+| `rebuild-all` | `-e` | Rebuild patch repos, then plugin repos for the active profile. |
+
+Use `--profile uya` or `--profile dl` to override `defaultProfile` for one command. You can also put the profile at the end, like `./run.sh -p dl`.
+
+Use `--no-plugin`, `--no-patch`, or `--no-dns` to disable those features for one command. For Docker mount changes, use a command that recreates the server container, such as `./run.sh server --no-plugin`, `./run.sh server --no-patch`, or `./run.sh restart --no-plugin --no-patch`.
+
+## What Setup Does
+
+- Clones/pulls the repos from `profiles/uya.json` or `profiles/dl.json`, skipping repos marked `kind: "plugin"`, `kind: "patch"`, or `kind: "dns"` when disabled.
+- Detects the host LAN IP.
+- Updates `horizon-dns/config.json` so PS2 hostnames resolve to the host, when DNS is enabled.
+- Generates `local.secrets.json` and `horizon-docker/.env` with profile-specific DB credentials and any enabled plugin/patch mount paths.
+- Updates `db.config.json` for Docker-internal middleware access.
+- Updates `medius.json` and `dme.json` public IP overrides.
+- Applies local Docker fixes:
+  - SQL Server 2022 image.
+  - Profile-specific Docker named volume for SQL data.
+  - no manual `network_mode: bridge`.
+  - middleware URL without trailing slash.
+- Builds and starts `horizon-dns`, when DNS is enabled.
+- Starts `horizon-docker`.
+
+## Notes
+
+Do not set DNAS IP to `127.0.0.1`. Use the host LAN IP printed by setup or `./run.sh dns`. Loopback usually points at the client/emulated network side, not reliably at the Docker host.
+
+On Windows, if Docker complains about volume paths, rerun your desired `run.sh` command from Git Bash. The script refreshes the compose `.env` plugin and patch paths before Docker Compose runs.

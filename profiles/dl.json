@@ -1,0 +1,77 @@
+{
+    "id":  "dl",
+    "name":  "Ratchet: Deadlocked",
+    "appIds":  [
+                   11184
+               ],
+    "database":  {
+                     "name":  "Medius_Database",
+                     "user":  "sa",
+                     "sqlAdminPassword":  "auto"
+                 },
+    "plugin":  {
+                   "repo":  "horizon-deadlocked-plugin",
+                   "mediusPath":  "out/medius",
+                   "dmePath":  "out/dme"
+               },
+    "patch":  {
+                  "repo":  "horizon-deadlocked-patch",
+                  "miscPath":  "misc",
+                  "binPath":  "bin"
+              },
+    "middlewarePlugin":  {
+                             "repo":  "horizon-deadlocked-middleware-plugin",
+                             "path":  "out/plugin"
+                         },
+    "muis":  {
+                 "encryptMessages":  true,
+                 "endpoint":  "ratchetdl-prod.pdonline.scea.com",
+                 "name":  "Ratchet: Deadlocked"
+             },
+    "repos":  [
+                  {
+                      "name":  "horizon-server",
+                      "https":  "https://github.com/Horizon-Private-Server/horizon-server.git",
+                      "ssh":  "git@github.com:Horizon-Private-Server/horizon-server.git"
+                  },
+                  {
+                      "name":  "horizon-server-database-middleware",
+                      "https":  "https://github.com/Horizon-Private-Server/horizon-server-database-middleware.git",
+                      "ssh":  "git@github.com:Horizon-Private-Server/horizon-server-database-middleware.git"
+                  },
+                  {
+                      "name":  "horizon-server-database",
+                      "https":  "https://github.com/Horizon-Private-Server/horizon-server-database.git",
+                      "ssh":  "git@github.com:Horizon-Private-Server/horizon-server-database.git"
+                  },
+                  {
+                      "name":  "horizon-docker",
+                      "https":  "https://github.com/Horizon-Private-Server/horizon-docker.git",
+                      "ssh":  "git@github.com:Horizon-Private-Server/horizon-docker.git"
+                  },
+                  {
+                      "name":  "horizon-dns",
+                      "https":  "https://github.com/Horizon-Private-Server/horizon-dns.git",
+                      "ssh":  "git@github.com:Horizon-Private-Server/horizon-dns.git",
+                      "kind":  "dns"
+                  },
+                  {
+                      "name":  "horizon-deadlocked-plugin",
+                      "kind":  "plugin",
+                      "https":  "https://github.com/Horizon-Private-Server/horizon-deadlocked-plugin.git",
+                      "ssh":  "git@github.com:Horizon-Private-Server/horizon-deadlocked-plugin.git"
+                  },
+                  {
+                      "name":  "horizon-deadlocked-patch",
+                      "kind":  "patch",
+                      "https":  "https://github.com/Horizon-Private-Server/horizon-deadlocked-patch.git",
+                      "ssh":  "git@github.com:Horizon-Private-Server/horizon-deadlocked-patch.git"
+                  },
+                  {
+                      "name":  "horizon-deadlocked-middleware-plugin",
+                      "kind":  "middleware-plugin",
+                      "https":  "https://github.com/Horizon-Private-Server/horizon-deadlocked-middleware-plugin.git",
+                      "ssh":  "git@github.com:Horizon-Private-Server/horizon-deadlocked-middleware-plugin.git"
+                  }
+              ]
+}

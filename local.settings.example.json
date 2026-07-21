@@ -1,0 +1,13 @@
+{
+  "defaultProfile": "uya",
+  "installRoot": "./local",
+  "secretsFile": "./local.secrets.json",
+
+  "includePlugin": true,
+  "includePatch": true,
+  "includeDns": true,
+
+  "cloneProtocol": "https",
+  "serverIp": "auto",
+  "startAfterSetup": true
+}
