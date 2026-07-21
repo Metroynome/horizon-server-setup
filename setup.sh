@@ -24,7 +24,6 @@ if [ -z "${HORIZON_SETUP_LOG_ACTIVE:-}" ]; then
   LOG_FILE="$LOG_DIR/setup-$(date +%Y%m%d-%H%M%S).log"
   export HORIZON_SETUP_LOG_ACTIVE=1
   export HORIZON_SETUP_LOG_FILE="$LOG_FILE"
-  echo "Log file: $LOG_FILE"
   bash "$0" "$@" 2>&1 | tee -a "$LOG_FILE"
   exit "${PIPESTATUS[0]}"
 else
@@ -33,7 +32,7 @@ fi
 
 usage() {
   cat <<USAGE
-Usage: ./setup.sh <uya|dl> [options]
+Usage: ./setup.sh <profile> [options]
 
 Options:
   --ssh                 Clone using SSH URLs.
@@ -53,7 +52,7 @@ Options:
 Examples:
   ./setup.sh uya
   ./setup.sh dl --ssh
-  ./setup.sh uya --ip 192.168.1.190
+  ./setup.sh <profile> --ip 192.168.1.190
 USAGE
 }
 
@@ -475,6 +474,15 @@ if appsettings_path.exists():
         'GameTimeoutSeconds': 50,
         'TextFilterAccountName': r'[^\x20-\x80]+|.{{15,}}',
     }
+    world = profile.get('world') or {}
+    locations = [
+        {
+            'Id': int(world.get('locationId', 40)),
+            'Name': str(world.get('locationName') or profile.get('name') or group_name),
+        }
+    ]
+    channel_id = int(world.get('channelId', 1))
+    channel_name = str(world.get('channelName') or 'CY00000000-00')
     appsettings['AppGroups'] = [{'Name': group_name}]
     appsettings['Apps'] = [
         {
@@ -487,14 +495,15 @@ if appsettings_path.exists():
         for index, app_id in enumerate(app_ids)
     ]
     appsettings['Locations'] = [
-        {'Id': 40, 'AppId': app_id, 'Name': 'Battledome' if profile.get('id') == 'dl' else 'Aquatos'}
+        {'Id': location['Id'], 'AppId': app_id, 'Name': location['Name']}
         for app_id in app_ids
+        for location in locations
     ]
     appsettings['Channels'] = [
         {
-            'Id': 1,
+            'Id': channel_id,
             'AppId': app_id,
-            'Name': 'CY00000000-00',
+            'Name': channel_name,
             'MaxPlayers': 256,
             'GenericField1': 0,
             'GenericField2': 0,
@@ -509,48 +518,41 @@ if appsettings_path.exists():
     else:
         appsettings.pop('Plugins', None)
     write_json(appsettings_path, appsettings)
-# MUIS universe endpoint advertised to the game client.
+# MUIS entrypoints advertised to the game client.
 muis_path = horizon_docker / 'muis.json'
 if muis_path.exists():
-    muis = read_json(muis_path)
-    universes = muis.get('Universes', {})
-    if isinstance(universes, dict):
-        for entries in universes.values():
-            if isinstance(entries, list):
-                for entry in entries:
-                    if isinstance(entry, dict) and 'Endpoint' in entry:
-                        entry['Endpoint'] = profile.get('muis', {}).get('endpoint', server_ip) if isinstance(profile.get('muis', {}), dict) else server_ip
-    write_json(muis_path, muis)
+    muis = json.loads(muis_path.read_text(encoding='utf-8'))
+    muis_config = profile.get('muis') if isinstance(profile.get('muis'), dict) else {}
+    muis_port = int(muis_config.get('port', 10075))
+    muis_universe_id = int(muis_config.get('universeId', 1))
+    muis['EncryptMessages'] = bool(muis_config.get('encryptMessages', muis.get('EncryptMessages', True)))
 
-# Make MUIS app-id aware instead of relying on app id 0 fallback.
-if muis_path.exists():
-    muis = read_json(muis_path)
-    universes = muis.setdefault('Universes', {})
-    base_entries = universes.get('0') or next((v for v in universes.values() if isinstance(v, list) and v), [])
-    if isinstance(base_entries, list):
-        for entries in list(universes.values()):
-            if isinstance(entries, list):
-                for entry in entries:
-                    if isinstance(entry, dict) and 'Endpoint' in entry:
-                        entry['Endpoint'] = profile.get('muis', {}).get('endpoint', server_ip) if isinstance(profile.get('muis', {}), dict) else server_ip
-        for app_id in app_ids:
-            key = str(app_id)
-            if key not in universes:
-                copied = json.loads(json.dumps(base_entries))
-                for entry in copied:
-                    if isinstance(entry, dict):
-                        entry['Endpoint'] = profile.get('muis', {}).get('endpoint', server_ip) if isinstance(profile.get('muis', {}), dict) else server_ip
-                        entry.setdefault('Port', 10075)
-                        if isinstance(profile.get('muis', {}), dict) and profile.get('muis', {}).get('name'):
-                            entry['Name'] = profile['muis']['name']
-                universes[key] = copied
-    muis_config = profile.get('muis', {})
-    if isinstance(muis_config, dict) and 'encryptMessages' in muis_config:
-        muis['EncryptMessages'] = bool(muis_config['encryptMessages'])
+    raw_entrypoints = muis_config.get('entrypoints')
+    if isinstance(raw_entrypoints, list) and raw_entrypoints:
+        entrypoint_configs = [entry for entry in raw_entrypoints if isinstance(entry, dict)]
+    else:
+        entrypoint_configs = [muis_config]
+
+    universe_entries = []
+    for entry_config in entrypoint_configs:
+        universe_entries.append({
+            'Enabled': bool(entry_config.get('enabled', muis_config.get('enabled', True))),
+            'Name': str(entry_config.get('name') or muis_config.get('name') or profile.get('name') or profile.get('id') or 'Horizon'),
+            'Description': entry_config.get('description', muis_config.get('description')),
+            'Endpoint': str(entry_config.get('endpoint') or muis_config.get('endpoint') or server_ip),
+            'SvoURL': entry_config.get('svoUrl', muis_config.get('svoUrl')),
+            'ExtendedInfo': entry_config.get('extendedInfo', muis_config.get('extendedInfo')),
+            'Port': muis_port,
+            'UniverseId': muis_universe_id,
+        })
+
+    muis['Universes'] = {'0': [dict(entry) for entry in universe_entries]}
+    for app_id in app_ids:
+        muis['Universes'][str(app_id)] = [dict(entry) for entry in universe_entries]
     logging = muis.setdefault('Logging', {})
     logging['LogToConsole'] = True
     logging['LogPath'] = '/logs/muis.log'
-    write_json(muis_path, muis)
+    muis_path.write_text(json.dumps(muis, indent=2) + '\n', encoding='utf-8')
 
 # Docker Compose fixes for local Docker Desktop/WSL/macOS friendliness.
 prepare_middleware_build_context()
@@ -682,10 +684,12 @@ while [ $# -gt 0 ]; do
       INCLUDE_PATCH="false" ;;
     --no-dns)
       INCLUDE_DNS="false" ;;
-    uya|dl)
-      PROFILE="$1" ;;
     *)
-      fail "Unknown argument: $1" ;;
+      if [ -z "$PROFILE" ] && [ -f "$SCRIPT_DIR/profiles/$1.json" ]; then
+        PROFILE="$1"
+      else
+        fail "Unknown argument: $1"
+      fi ;;
   esac
   shift
 done
@@ -699,7 +703,7 @@ copy_settings_if_needed
 if [ -z "$PROFILE" ]; then
   PROFILE="$(json_get "$SETTINGS_FILE" defaultProfile)"
 fi
-[ -n "$PROFILE" ] || fail "Profile is required: uya or dl"
+[ -n "$PROFILE" ] || fail "Profile is required. Use one of the JSON files in profiles/."
 PROFILE_FILE="$SCRIPT_DIR/profiles/$PROFILE.json"
 [ -f "$PROFILE_FILE" ] || fail "Unknown profile: $PROFILE"
 python3 - "$SETTINGS_FILE" "$PROFILE" <<'PY'
@@ -817,4 +821,3 @@ else
   echo ""
   echo "horizon-dns disabled; configure DNS/routing outside this setup."
 fi
-

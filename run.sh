@@ -7,7 +7,7 @@ SETTINGS_FILE="$SCRIPT_DIR/local.settings.json"
 usage() {
   cat <<'USAGE'
 Usage: ./run.sh <command|option> [profile]
-       ./run.sh <command|option> --profile <uya|dl>
+       ./run.sh <command|option> --profile <profile>
 
 Commands:
   help              Show this help.
@@ -24,6 +24,7 @@ Commands:
   logs              Follow horizon-server logs.
   middleware-logs   Follow middleware logs.
   db-logs           Follow SQL Server logs.
+  sync-world        Sync profile world locations/channels into the active database.
   delete-db         Delete the active profile database volume.
   reset-db          Delete the active profile database volume.
   dns               Show DNAS IP and sampled DNS hostname mappings.
@@ -39,7 +40,7 @@ Commands:
 
 Options:
   -h, --help              Show this help.
-  --profile <uya|dl>         Override active-profile detection/defaultProfile for this command.
+  --profile <profile>     Override active-profile detection/defaultProfile for this command.
   --no-plugin             Disable plugin mounts/builds for this command.
   --no-patch              Disable patch mounts/builds for this command.
   --no-dns                Disable horizon-dns actions for this command.
@@ -142,7 +143,7 @@ normalize_command() {
 }
 
 is_profile() {
-  [ "$1" = "uya" ] || [ "$1" = "dl" ]
+  [ -n "$1" ] && [ -f "$SCRIPT_DIR/profiles/$1.json" ]
 }
 
 server_running() {
@@ -207,8 +208,9 @@ while [ $# -gt 0 ]; do
       ;;
     --profile)
       shift
-      [ $# -gt 0 ] || fail "--profile requires uya or dl"
-      is_profile "$1" || fail "--profile must be uya or dl"
+      [ $# -gt 0 ] || fail "--profile requires a profile name"
+      is_profile "$1" || fail "Unknown profile: $1"
+      [ -z "$PROFILE_OVERRIDE" ] || fail "Profile was provided more than once"
       PROFILE_OVERRIDE="$1"
       ;;
     --no-plugin)
@@ -220,25 +222,22 @@ while [ $# -gt 0 ]; do
     --no-dns)
       INCLUDE_DNS_OVERRIDE="false"
       ;;
-    uya|dl)
-      if [ -n "$PROFILE_OVERRIDE" ]; then
-        fail "Profile was provided more than once"
-      fi
-      PROFILE_OVERRIDE="$1"
-      ;;
     *)
-      if [ -n "$COMMAND" ]; then
+      if is_profile "$1"; then
+        [ -z "$PROFILE_OVERRIDE" ] || fail "Profile was provided more than once"
+        PROFILE_OVERRIDE="$1"
+      elif [ -z "$COMMAND" ]; then
+        COMMAND="$(normalize_command "$1")"
+      else
         fail "Unexpected extra argument: $1"
       fi
-      COMMAND="$(normalize_command "$1")"
       ;;
   esac
   shift
 done
-
 [ -n "$COMMAND" ] || fail "Command is required. Run ./run.sh help."
 
-[ -f "$SETTINGS_FILE" ] || fail "local.settings.json is missing. Run ./setup.sh <uya|dl> first."
+[ -f "$SETTINGS_FILE" ] || fail "local.settings.json is missing. Run ./setup.sh <profile> first."
 command -v python3 >/dev/null 2>&1 || fail "Missing python3"
 command -v docker >/dev/null 2>&1 || fail "Missing docker"
 
@@ -277,7 +276,7 @@ INCLUDE_PATCH="$(json_get "$SETTINGS_FILE" includePatch)"
 INCLUDE_DNS="$(json_get "$SETTINGS_FILE" includeDns)"
 [ -n "$INCLUDE_DNS" ] || INCLUDE_DNS="true"
 [ -z "$INCLUDE_DNS_OVERRIDE" ] || INCLUDE_DNS="$INCLUDE_DNS_OVERRIDE"
-is_profile "$PROFILE" || fail "Profile must be uya or dl, got: $PROFILE"
+is_profile "$PROFILE" || fail "Unknown profile: $PROFILE"
 case "$INCLUDE_PLUGIN" in true|false) ;; *) fail "includePlugin must be true or false" ;; esac
 case "$INCLUDE_PATCH" in true|false) ;; *) fail "includePatch must be true or false" ;; esac
 case "$INCLUDE_DNS" in true|false) ;; *) fail "includeDns must be true or false" ;; esac
@@ -397,7 +396,6 @@ if middleware_plugin_config:
         appsettings_path.write_text(json.dumps(appsettings, indent=2) + '\n', encoding='utf-8')
 
 medius_path = generated / 'medius.json'
-muis_path = generated / 'muis.json'
 server_ip = ''
 if medius_path.exists():
     try:
@@ -405,16 +403,6 @@ if medius_path.exists():
         server_ip = medius.get('PublicIpOverride') or ''
     except json.JSONDecodeError:
         server_ip = ''
-if server_ip and muis_path.exists():
-    muis = json.loads(muis_path.read_text(encoding='utf-8'))
-    universes = muis.get('Universes', {})
-    if isinstance(universes, dict):
-        for entries in universes.values():
-            if isinstance(entries, list):
-                for entry in entries:
-                    if isinstance(entry, dict) and 'Endpoint' in entry:
-                        entry['Endpoint'] = profile.get('muis', {}).get('endpoint', server_ip) if isinstance(profile.get('muis', {}), dict) else server_ip
-    muis_path.write_text(json.dumps(muis, indent=2) + '\n', encoding='utf-8')
 appsettings_path = generated / 'appsettings.json'
 if appsettings_path.exists():
     appsettings = json.loads(appsettings_path.read_text(encoding='utf-8'))
@@ -431,6 +419,15 @@ if appsettings_path.exists():
         'GameTimeoutSeconds': 50,
         'TextFilterAccountName': r'[^\x20-\x80]+|.{{15,}}',
     }
+    world = profile.get('world') or {}
+    locations = [
+        {
+            'Id': int(world.get('locationId', 40)),
+            'Name': str(world.get('locationName') or profile.get('name') or group_name),
+        }
+    ]
+    channel_id = int(world.get('channelId', 1))
+    channel_name = str(world.get('channelName') or 'CY00000000-00')
     appsettings['AppGroups'] = [{'Name': group_name}]
     appsettings['Apps'] = [
         {
@@ -443,14 +440,15 @@ if appsettings_path.exists():
         for index, app_id in enumerate(app_ids)
     ]
     appsettings['Locations'] = [
-        {'Id': 40, 'AppId': app_id, 'Name': 'Battledome' if profile.get('id') == 'dl' else 'Aquatos'}
+        {'Id': location['Id'], 'AppId': app_id, 'Name': location['Name']}
         for app_id in app_ids
+        for location in locations
     ]
     appsettings['Channels'] = [
         {
-            'Id': 1,
+            'Id': channel_id,
             'AppId': app_id,
-            'Name': 'CY00000000-00',
+            'Name': channel_name,
             'MaxPlayers': 256,
             'GenericField1': 0,
             'GenericField2': 0,
@@ -465,35 +463,42 @@ if appsettings_path.exists():
     else:
         appsettings.pop('Plugins', None)
     appsettings_path.write_text(json.dumps(appsettings, indent=2) + '\n', encoding='utf-8')
+# MUIS entrypoints advertised to the game client.
+muis_path = generated / 'muis.json'
 if muis_path.exists():
     muis = json.loads(muis_path.read_text(encoding='utf-8'))
-    universes = muis.setdefault('Universes', {})
-    base_entries = universes.get('0') or next((v for v in universes.values() if isinstance(v, list) and v), [])
-    if isinstance(base_entries, list):
-        for entries in list(universes.values()):
-            if isinstance(entries, list):
-                for entry in entries:
-                    if isinstance(entry, dict) and 'Endpoint' in entry and server_ip:
-                        entry['Endpoint'] = profile.get('muis', {}).get('endpoint', server_ip) if isinstance(profile.get('muis', {}), dict) else server_ip
-        for app_id in app_ids:
-            key = str(app_id)
-            if key not in universes:
-                copied = json.loads(json.dumps(base_entries))
-                for entry in copied:
-                    if isinstance(entry, dict):
-                        if server_ip:
-                            entry['Endpoint'] = profile.get('muis', {}).get('endpoint', server_ip) if isinstance(profile.get('muis', {}), dict) else server_ip
-                        entry.setdefault('Port', 10075)
-                        if isinstance(profile.get('muis', {}), dict) and profile.get('muis', {}).get('name'):
-                            entry['Name'] = profile['muis']['name']
-                universes[key] = copied
-    muis_config = profile.get('muis', {})
-    if isinstance(muis_config, dict) and 'encryptMessages' in muis_config:
-        muis['EncryptMessages'] = bool(muis_config['encryptMessages'])
+    muis_config = profile.get('muis') if isinstance(profile.get('muis'), dict) else {}
+    muis_port = int(muis_config.get('port', 10075))
+    muis_universe_id = int(muis_config.get('universeId', 1))
+    muis['EncryptMessages'] = bool(muis_config.get('encryptMessages', muis.get('EncryptMessages', True)))
+
+    raw_entrypoints = muis_config.get('entrypoints')
+    if isinstance(raw_entrypoints, list) and raw_entrypoints:
+        entrypoint_configs = [entry for entry in raw_entrypoints if isinstance(entry, dict)]
+    else:
+        entrypoint_configs = [muis_config]
+
+    universe_entries = []
+    for entry_config in entrypoint_configs:
+        universe_entries.append({
+            'Enabled': bool(entry_config.get('enabled', muis_config.get('enabled', True))),
+            'Name': str(entry_config.get('name') or muis_config.get('name') or profile.get('name') or profile.get('id') or 'Horizon'),
+            'Description': entry_config.get('description', muis_config.get('description')),
+            'Endpoint': str(entry_config.get('endpoint') or muis_config.get('endpoint') or server_ip),
+            'SvoURL': entry_config.get('svoUrl', muis_config.get('svoUrl')),
+            'ExtendedInfo': entry_config.get('extendedInfo', muis_config.get('extendedInfo')),
+            'Port': muis_port,
+            'UniverseId': muis_universe_id,
+        })
+
+    muis['Universes'] = {'0': [dict(entry) for entry in universe_entries]}
+    for app_id in app_ids:
+        muis['Universes'][str(app_id)] = [dict(entry) for entry in universe_entries]
     logging = muis.setdefault('Logging', {})
     logging['LogToConsole'] = True
     logging['LogPath'] = '/logs/muis.log'
     muis_path.write_text(json.dumps(muis, indent=2) + '\n', encoding='utf-8')
+
 updates = {k: v.replace('\\', '/') for k, v in updates.items()}
 optional_env_keys = {
     'HORIZON_MEDIUS_PLUGIN_PATH',
@@ -581,6 +586,125 @@ compose() {
 
 compose_recreate() {
   compose up -d --build --force-recreate "$@"
+}
+
+env_value() {
+  python3 - "$GENERATED_ROOT/.env" "$1" <<'PY'
+import sys
+from pathlib import Path
+path = Path(sys.argv[1])
+key = sys.argv[2]
+if not path.exists():
+    raise SystemExit(0)
+for line in path.read_text(encoding='utf-8').splitlines():
+    if not line or line.lstrip().startswith('#') or '=' not in line:
+        continue
+    name, value = line.split('=', 1)
+    if name == key:
+        print(value)
+        break
+PY
+}
+
+wait_for_database() {
+  local password i
+  password="$(env_value HORIZON_MSSQL_SA_PASSWORD)"
+  [ -n "$password" ] || fail "Missing HORIZON_MSSQL_SA_PASSWORD in $GENERATED_ROOT/.env"
+
+  for i in $(seq 1 60); do
+    if docker exec horizon-database /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "$password" -Q "SELECT 1" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 2
+  done
+  fail "Timed out waiting for horizon-database to accept SQL connections"
+}
+
+sync_world_catalog() {
+  local password db_name sql_file container_sql
+  [ -f "$GENERATED_ROOT/appsettings.json" ] || fail "Missing generated appsettings.json. Run ./setup.sh $PROFILE first."
+  docker ps --format '{{.Names}}' | grep -qx horizon-database || fail "horizon-database is not running. Start the database before syncing world catalog."
+  wait_for_database
+
+  password="$(env_value HORIZON_MSSQL_SA_PASSWORD)"
+  db_name="$(env_value HORIZON_DB_NAME)"
+  [ -n "$db_name" ] || fail "Missing HORIZON_DB_NAME in $GENERATED_ROOT/.env"
+  mkdir -p "$DATA_ROOT/runtime"
+  sql_file="$DATA_ROOT/runtime/sync-world-$PROFILE.sql"
+  container_sql="/tmp/sync-world-$PROFILE.sql"
+
+  python3 - "$PROFILE_FILE" "$GENERATED_ROOT/appsettings.json" "$sql_file" <<'PY'
+import json, sys
+from pathlib import Path
+profile_path, appsettings_path, out_path = [Path(x) for x in sys.argv[1:4]]
+profile = json.loads(profile_path.read_text(encoding='utf-8'))
+appsettings = json.loads(appsettings_path.read_text(encoding='utf-8'))
+app_ids = [int(app_id) for app_id in profile.get('appIds', [])]
+if not app_ids:
+    raise SystemExit('Profile has no appIds; cannot sync world catalog')
+
+def sql_string(value):
+    return "N'" + str(value).replace("'", "''") + "'"
+
+def setting_pairs(settings):
+    for key, value in (settings or {}).items():
+        yield key, str(value)
+
+app_id_list = ', '.join(str(app_id) for app_id in app_ids)
+group_names = [str(group['Name']) for group in appsettings.get('AppGroups') or [] if isinstance(group, dict) and group.get('Name')]
+owned_setting_names = sorted({name for app in appsettings.get('Apps') or [] for name, _ in setting_pairs(app.get('ServerSettings'))})
+lines = [
+    'SET XACT_ABORT ON;',
+    'BEGIN TRANSACTION;',
+    f'DELETE FROM [WORLD].[channels];',
+    f'DELETE FROM [WORLD].[locations];',
+    f'DELETE FROM [KEYS].[dim_announcements] WHERE [app_id] NOT IN ({app_id_list});',
+    f'DELETE FROM [KEYS].[server_settings] WHERE [app_id] NOT IN ({app_id_list});',
+    f'DELETE FROM [KEYS].[dim_app_ids] WHERE [app_id] NOT IN ({app_id_list});',
+]
+if group_names:
+    group_list = ', '.join(sql_string(name) for name in group_names)
+    lines.append(f'DELETE FROM [KEYS].[dim_app_groups] WHERE [group_name] NOT IN ({group_list}) AND [group_id] NOT IN (SELECT DISTINCT [group_id] FROM [KEYS].[dim_app_ids] WHERE [group_id] IS NOT NULL);')
+for group_name in group_names:
+    group_sql = sql_string(group_name)
+    lines.append(f"IF NOT EXISTS (SELECT 1 FROM [KEYS].[dim_app_groups] WHERE [group_name] = {group_sql}) INSERT INTO [KEYS].[dim_app_groups] ([group_name]) VALUES ({group_sql});")
+for app in appsettings.get('Apps') or []:
+    app_id = int(app['Id'])
+    if app_id not in app_ids:
+        continue
+    group_name = sql_string(app['GroupName'])
+    app_name = sql_string(app['Name'])
+    lines.append(f"DECLARE @group_id_{app_id} int;")
+    lines.append(f"SELECT @group_id_{app_id} = [group_id] FROM [KEYS].[dim_app_groups] WHERE [group_name] = {group_name};")
+    lines.append(f"IF EXISTS (SELECT 1 FROM [KEYS].[dim_app_ids] WHERE [app_id] = {app_id}) UPDATE [KEYS].[dim_app_ids] SET [app_name] = {app_name}, [group_id] = @group_id_{app_id} WHERE [app_id] = {app_id}; ELSE INSERT INTO [KEYS].[dim_app_ids] ([app_id], [app_name], [group_id]) VALUES ({app_id}, {app_name}, @group_id_{app_id});")
+    lines.append(f"DELETE FROM [KEYS].[dim_announcements] WHERE [app_id] = {app_id};")
+    for announcement in app.get('Announcements') or []:
+        lines.append('INSERT INTO [KEYS].[dim_announcements] ([announcement_title], [announcement_body], [create_dt], [modified_dt], [from_dt], [app_id]) '
+                     f"VALUES ({sql_string(announcement.get('Title', ''))}, {sql_string(announcement.get('Body', ''))}, getdate(), getdate(), getdate(), {app_id});")
+    if owned_setting_names:
+        setting_list = ', '.join(sql_string(name) for name in owned_setting_names)
+        lines.append(f"DELETE FROM [KEYS].[server_settings] WHERE [app_id] = {app_id} AND [name] IN ({setting_list});")
+    for key, value in setting_pairs(app.get('ServerSettings')):
+        lines.append(f"INSERT INTO [KEYS].[server_settings] ([app_id], [name], [value]) VALUES ({app_id}, {sql_string(key)}, {sql_string(value)});")
+for location in appsettings.get('Locations') or []:
+    app_id = int(location['AppId'])
+    if app_id not in app_ids:
+        continue
+    lines.append('INSERT INTO [WORLD].[locations] ([id], [app_id], [name]) '
+                 f"VALUES ({int(location['Id'])}, {app_id}, {sql_string(location['Name'])});")
+for channel in appsettings.get('Channels') or []:
+    app_id = int(channel['AppId'])
+    if app_id not in app_ids:
+        continue
+    lines.append('INSERT INTO [WORLD].[channels] ([id], [app_id], [name], [max_players], [generic_field_1], [generic_field_2], [generic_field_3], [generic_field_4], [generic_field_filter]) '
+                 f"VALUES ({int(channel['Id'])}, {app_id}, {sql_string(channel['Name'])}, {int(channel['MaxPlayers'])}, {int(channel['GenericField1'])}, {int(channel['GenericField2'])}, {int(channel['GenericField3'])}, {int(channel['GenericField4'])}, {int(channel['GenericFieldFilter'])});")
+lines.extend(['COMMIT TRANSACTION;', ''])
+out_path.write_text('\n'.join(lines), encoding='utf-8')
+PY
+
+  echo "Syncing world catalog for $PROFILE into $db_name..."
+  docker cp "$sql_file" "horizon-database:$container_sql"
+  docker exec horizon-database /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "$password" -d "$db_name" -i "$container_sql"
 }
 
 dns_enabled() {
@@ -687,12 +811,27 @@ sanitize_image_name() {
   printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9_.-]/-/g'
 }
 
+normalize_build_dockerfile() {
+  local dockerfile="$1"
+  [ -f "$dockerfile" ] || return 0
+  python3 - "$dockerfile" <<'PY'
+import re, sys
+from pathlib import Path
+path = Path(sys.argv[1])
+text = path.read_text(encoding='utf-8')
+text = re.sub(r'(?m)^(FROM\s+\S+)\s+as\s+(\S+)\s*$', r'\1 AS \2', text)
+text = re.sub(r'(?m)^CMD\s+"([^"]+)"\s*$', r'CMD ["\1"]', text)
+path.write_text(text, encoding='utf-8')
+PY
+}
+
 build_plugin_repo() {
   local repo="$1"
   local repo_path="$INSTALL_ROOT/$repo"
   local image cid
 
   if [ -f "$repo_path/Dockerfile" ]; then
+    normalize_build_dockerfile "$repo_path/Dockerfile"
     image="$(sanitize_image_name "horizon-$PROFILE-$repo-build")"
     echo "Building $repo with Dockerfile non-interactively"
     rm -rf "$repo_path/out" "$repo_path/server" "$repo_path/middleware"
@@ -767,6 +906,7 @@ start_all() {
   compose_recreate horizon-database
   sleep 10
   compose_recreate horizon-middleware
+  sync_world_catalog
   build_named_repos patch
   build_named_repos plugin
   sleep 5
@@ -862,7 +1002,8 @@ case "$COMMAND" in
   database)
     compose_recreate horizon-database ;;
   middleware)
-    compose_recreate horizon-middleware ;;
+    compose_recreate horizon-middleware
+    sync_world_catalog ;;
   stop|down)
     stop_all ;;
   restart)
@@ -877,6 +1018,8 @@ case "$COMMAND" in
     (cd "$GENERATED_ROOT" && docker compose logs -f horizon-middleware) ;;
   db-logs)
     (cd "$GENERATED_ROOT" && docker compose logs -f horizon-database) ;;
+  sync-world)
+    sync_world_catalog ;;
   delete-db)
     delete_db_volume ;;
   reset-db)

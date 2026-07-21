@@ -37,7 +37,7 @@ Windows PowerShell:
 .\setup.ps1 uya
 ```
 
-For Deadlocked instead of UYA:
+Pick any profile in `profiles/`; for Deadlocked instead of UYA:
 
 ```bash
 ./setup.sh dl
@@ -61,10 +61,10 @@ After setup, set the DNAS IP to the IP printed by the script. You can print it a
 For a server profile that should not use game-specific plugin, patch, or local DNS repos, disable them for one setup run:
 
 ```bash
-./setup.sh uya --no-plugin
-./setup.sh uya --no-patch
-./setup.sh uya --no-dns
-./setup.sh uya --no-plugin --no-patch --no-dns
+./setup.sh <profile> --no-plugin
+./setup.sh <profile> --no-patch
+./setup.sh <profile> --no-dns
+./setup.sh <profile> --no-plugin --no-patch --no-dns
 ```
 
 Each setup run writes a transcript under `logs/`, for example `logs/setup-20260720-193000.log`.
@@ -111,6 +111,47 @@ horizon-server-setup/
   local.settings.json
   local.secrets.json
 ```
+
+## Profiles
+
+Each file in `profiles/` is a runnable server profile. UYA and DL are examples, but the scripts accept any `profiles/<name>.json` file.
+
+Core profile fields:
+
+```json
+{
+  "id": "mygame",
+  "name": "My Game",
+  "appIds": [12345],
+  "database": {
+    "name": "Horizon_MYGAME",
+    "user": "sa",
+    "sqlAdminPassword": "auto"
+  },
+  "world": {
+    "locationName": "Main Lobby",
+    "locationId": 40,
+    "channelName": "CY00000000-00",
+    "channelId": 1
+  },
+  "muis": {
+    "encryptMessages": true,
+    "entrypoints": [
+      {
+        "name": "My Game",
+        "endpoint": "mygame-prod.pdonline.scea.com"
+      }
+    ]
+  },
+  "repos": []
+}
+```
+
+Optional `plugin`, `patch`, and `middlewarePlugin` sections only need to exist for profiles that use them. Keep `muis` explicit for profiles that need MUIS routing, because the upstream default is only a template. `muis.entrypoints` may contain multiple regional login routes; `port` and `universeId` default to `10075` and `1` for all entries. Repos marked with `kind: "plugin"`, `kind: "patch"`, `kind: "middleware-plugin"`, or `kind: "dns"` are skipped when the matching feature is disabled.
+
+`world.locationName` and `world.locationId` define the single visible city/lobby location Horizon currently handles cleanly. Horizon can return multiple locations, but without server-side PickLocation support those selections are not fully meaningful, so profiles intentionally stay to one location for now.
+
+After changing profile app IDs, app names, location name/id, or channel name/id on an existing database, run `./run.sh sync-world` or use a start command that recreates middleware, such as `./run.sh start`.
 
 ## Database And Secrets
 
@@ -169,6 +210,7 @@ Git Bash / WSL / Linux / macOS:
 ./run.sh logs            # follow horizon-server logs
 ./run.sh middleware-logs # follow horizon-middleware logs
 ./run.sh db-logs         # follow horizon-database logs
+./run.sh sync-world      # sync profile app/world catalog into the active database
 ./run.sh delete-db       # delete the active profile DB volume
 ./run.sh reset-db        # delete the active profile DB volume
 ```
@@ -235,6 +277,7 @@ Windows PowerShell wrappers pass through to the Bash scripts:
 | `logs` | | Follow horizon-server logs. |
 | `middleware-logs` | | Follow horizon-middleware logs. |
 | `db-logs` | | Follow horizon-database logs. |
+| `sync-world` | | Sync profile app/world catalog into the active database. |
 | `delete-db` | | Delete the active profile database volume without starting the server. |
 | `reset-db` | | Delete the active profile database volume without starting the server. |
 | `dns` | | Show DNAS IP and sampled DNS mappings. |
@@ -248,7 +291,7 @@ Windows PowerShell wrappers pass through to the Bash scripts:
 
 This setup is designed for one running Horizon server profile at a time. When `--profile` is omitted, `run.sh` chooses the profile in this order:
 
-1. Explicit `--profile uya` / `--profile dl`, or a trailing profile like `./run.sh -p dl`.
+1. Explicit `--profile <profile>`, or a trailing profile like `./run.sh -p dl`.
 2. `data/runtime/active-profile.json`, but only while `horizon-server` is currently running.
 3. `defaultProfile` from `local.settings.json` when no server is running.
 
@@ -260,7 +303,7 @@ Use `--no-plugin`, `--no-patch`, or `--no-dns` to disable those features for one
 
 ## What Setup Does
 
-- Clones/pulls the repos from `profiles/uya.json` or `profiles/dl.json`, skipping repos marked `kind: "plugin"`, `kind: "patch"`, or `kind: "dns"` when disabled.
+- Clones/pulls the repos from the selected `profiles/<profile>.json`, skipping repos marked `kind: "plugin"`, `kind: "patch"`, `kind: "middleware-plugin"`, or `kind: "dns"` when disabled.
 - Detects the host LAN IP.
 - Updates `horizon-dns/config.json` so PS2 hostnames resolve to the host, when DNS is enabled.
 - Generates `local.secrets.json` and `data/generated/.env` with profile-specific DB credentials and any enabled plugin/patch mount paths.
@@ -269,7 +312,7 @@ Use `--no-plugin`, `--no-patch`, or `--no-dns` to disable those features for one
 - Applies local Docker fixes:
   - SQL Server 2022 image.
   - Stable profile-specific Docker named volume for SQL data.
-  - Generated middleware build context with profile-specific SQL database init scripts.
+  - Generated middleware build context with profile-specific SQL database init scripts and app/world catalog.
   - no manual `network_mode: bridge`.
   - middleware URL without trailing slash.
 - Builds and starts `horizon-dns`, when DNS is enabled.

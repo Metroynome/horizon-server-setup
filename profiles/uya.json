@@ -5,6 +5,29 @@
     10684,
     10683
   ],
+  "world": {
+    "locationName": "Aquatos",
+    "locationId": 40,
+    "channelName": "CY00000000-00",
+    "channelId": 1
+  },
+  "muis": {
+    "encryptMessages": true,
+    "entrypoints": [
+      {
+        "name": "Ratchet & Clank: Up Your Arsenal",
+        "endpoint": "ratchet3-prod1.pdonline.scea.com"
+      },
+      {
+        "name": "Ratchet & Clank 3",
+        "endpoint": "randc3-master.online.scee.com"
+      },
+      {
+        "name": "Ratchet & Clank 3",
+        "endpoint": "ratchet3.pdonline.scek.co.kr"
+      }
+    ]
+  },
   "database": {
     "name": "Horizon_UYA",
     "user": "sa",
