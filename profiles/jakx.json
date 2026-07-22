@@ -1,0 +1,56 @@
+{
+  "id": "jakx",
+  "name": "Jak X - Combat Racing",
+  "appIds": [10994, 11204],
+  "world": {
+    "locationName": "Horizon",
+    "locationId": 40,
+    "channelName": "CY00000000-00",
+    "channelId": 1
+  },
+  "muis": {
+    "encryptMessages": false,
+    "entrypoints": [
+      {
+        "name": "Jak X - Combat Racing (NTSCU)",
+        "endpoint": "jakx-prod.muis.pdonline.scea.com"
+      },
+      {
+        "name": "Jak X - Combat Racing (PAL)",
+        "endpoint": "jakx-palmaster.muis.online.scee.com"
+      },
+      {
+        "name": "Jak X - Combat Racing Public Beta Trials (PAL)",
+        "endpoint": "jakx-palpbtrials.muis.online.scee.com"
+      }
+    ]
+  },
+  "database": {
+    "name": "Horizon_JakX",
+    "user": "sa",
+    "sqlAdminPassword": "auto"
+  },
+  "repos": [
+    {
+      "name": "horizon-server",
+      "https": "https://github.com/Horizon-Private-Server/horizon-server.git",
+      "ssh": "git@github.com:Horizon-Private-Server/horizon-server.git"
+    },
+    {
+      "name": "horizon-server-database-middleware",
+      "https": "https://github.com/Horizon-Private-Server/horizon-server-database-middleware.git",
+      "ssh": "git@github.com:Horizon-Private-Server/horizon-server-database-middleware.git"
+    },
+    {
+      "name": "horizon-server-database",
+      "https": "https://github.com/Horizon-Private-Server/horizon-server-database.git",
+      "ssh": "git@github.com:Horizon-Private-Server/horizon-server-database.git"
+    },
+    {
+      "name": "horizon-dns",
+      "https": "https://github.com/Horizon-Private-Server/horizon-dns.git",
+      "ssh": "git@github.com:Horizon-Private-Server/horizon-dns.git",
+      "kind": "dns"
+    }
+  ]
+}
