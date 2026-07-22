@@ -1,7 +1,10 @@
 {
   "id": "jakx",
   "name": "Jak X - Combat Racing",
-  "appIds": [10994, 11204],
+  "appIds": [
+    10994,
+    11204
+  ],
   "world": {
     "locationName": "Horizon",
     "locationId": 40,
@@ -53,5 +56,16 @@
       "ssh": "git@github.com:Horizon-Private-Server/horizon-dns.git",
       "kind": "dns"
     }
-  ]
+  ],
+  "dns": {
+    "hostnames": [
+      "jakx-prod.muis.pdonline.scea.com",
+      "jakx-qa.muis.pdonline.scea.com",
+      "jakx-pubeta.muis.pdonline.scea.com",
+      "jakx-palmaster.muis.online.scee.com",
+      "jakx-palpreprod1.muis.online.scee.com",
+      "jakx-paldev.muis.online.scee.com",
+      "jakx-palpbtrials.muis.online.scee.com"
+    ]
+  }
 }

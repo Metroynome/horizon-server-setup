@@ -355,6 +355,32 @@ def validate_feature_config(profile, feature, required_keys, enabled):
         fields = ', '.join(f'{feature}.{key}' for key in missing)
         raise SystemExit(f'profile {profile.get("id", "unknown")} missing required {fields} when include{feature.capitalize()} is true')
     return config
+def profile_dns_hostnames(profile):
+    hostnames = []
+    dns_config = profile.get('dns') if isinstance(profile.get('dns'), dict) else {}
+    raw_dns_hostnames = dns_config.get('hostnames', [])
+    if isinstance(raw_dns_hostnames, list):
+        hostnames.extend(str(host).strip() for host in raw_dns_hostnames)
+    muis_config = profile.get('muis') if isinstance(profile.get('muis'), dict) else {}
+    raw_entrypoints = muis_config.get('entrypoints', [])
+    if isinstance(raw_entrypoints, list):
+        for entry in raw_entrypoints:
+            if isinstance(entry, dict):
+                hostnames.append(str(entry.get('endpoint', '')).strip())
+    elif isinstance(muis_config.get('endpoint'), str):
+        hostnames.append(muis_config['endpoint'].strip())
+    seen = set()
+    unique = []
+    for hostname in hostnames:
+        if not hostname or hostname.replace('.', '').replace('-', '').isdigit():
+            continue
+        key = hostname.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(hostname)
+    return unique
+
 plugin_config = validate_feature_config(profile, 'plugin', ['repo', 'mediusPath', 'dmePath'], include_plugin)
 patch_config = validate_feature_config(profile, 'patch', ['repo', 'miscPath', 'binPath'], include_patch)
 middleware_plugin_config = validate_feature_config(profile, 'middlewarePlugin', ['repo', 'path'], include_plugin)
@@ -403,6 +429,15 @@ if medius_path.exists():
         server_ip = medius.get('PublicIpOverride') or ''
     except json.JSONDecodeError:
         server_ip = ''
+if server_ip:
+    dns_config_path = root / 'horizon-dns' / 'config.json'
+    if dns_config_path.exists():
+        dns_config = json.loads(dns_config_path.read_text(encoding='utf-8'))
+        for key in list(dns_config.keys()):
+            dns_config[key] = server_ip
+        for hostname in profile_dns_hostnames(profile):
+            dns_config[hostname] = server_ip
+        dns_config_path.write_text(json.dumps(dns_config, indent=2) + '\n', encoding='utf-8')
 appsettings_path = generated / 'appsettings.json'
 if appsettings_path.exists():
     appsettings = json.loads(appsettings_path.read_text(encoding='utf-8'))

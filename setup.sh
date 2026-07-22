@@ -465,13 +465,41 @@ db_config.update({
 })
 write_json(db_config_path, db_config)
 
-# DNS config: point every known hostname at the host LAN IP.
+def profile_dns_hostnames(profile):
+    hostnames = []
+    dns_config = profile.get('dns') if isinstance(profile.get('dns'), dict) else {}
+    raw_dns_hostnames = dns_config.get('hostnames', [])
+    if isinstance(raw_dns_hostnames, list):
+        hostnames.extend(str(host).strip() for host in raw_dns_hostnames)
+    muis_config = profile.get('muis') if isinstance(profile.get('muis'), dict) else {}
+    raw_entrypoints = muis_config.get('entrypoints', [])
+    if isinstance(raw_entrypoints, list):
+        for entry in raw_entrypoints:
+            if isinstance(entry, dict):
+                hostnames.append(str(entry.get('endpoint', '')).strip())
+    elif isinstance(muis_config.get('endpoint'), str):
+        hostnames.append(muis_config['endpoint'].strip())
+    seen = set()
+    unique = []
+    for hostname in hostnames:
+        if not hostname or hostname.replace('.', '').replace('-', '').isdigit():
+            continue
+        key = hostname.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(hostname)
+    return unique
+
+# DNS config: point every known hostname plus profile hostnames at the host LAN IP.
 if include_dns:
     dns_config_path = horizon_dns / 'config.json'
     if dns_config_path.exists():
         dns_config = read_json(dns_config_path)
         for key in list(dns_config.keys()):
             dns_config[key] = server_ip
+        for hostname in profile_dns_hostnames(profile):
+            dns_config[hostname] = server_ip
         write_json(dns_config_path, dns_config)
 
 # Public IP override in server configs.
