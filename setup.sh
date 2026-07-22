@@ -162,23 +162,60 @@ PY
 clone_or_pull_repo() {
   local name="$1"
   local url="$2"
+  local branch="${3:-}"
   local target="$INSTALL_ROOT/$name"
 
   if [ -d "$target/.git" ]; then
     log "Updating $name"
+    git -C "$target" remote set-url origin "$url"
+    checkout_repo_branch "$target" "$branch"
     git -C "$target" pull --ff-only
   elif [ -d "$target" ]; then
     log "$name exists but is not a git checkout; leaving it alone."
   else
     log "Cloning $name"
-    (cd "$SCRIPT_DIR" && git clone "$url" "$target")
+    if [ -n "$branch" ]; then
+      (cd "$SCRIPT_DIR" && git clone --branch "$branch" "$url" "$target")
+    else
+      (cd "$SCRIPT_DIR" && git clone "$url" "$target")
+    fi
+  fi
+}
+
+checkout_repo_branch() {
+  local target="$1"
+  local branch="${2:-}"
+
+  git -C "$target" fetch origin
+  git -C "$target" remote set-head origin -a >/dev/null 2>&1 || true
+
+  if [ -z "$branch" ]; then
+    branch="$(git -C "$target" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null || true)"
+    branch="${branch#origin/}"
+  fi
+  if [ -z "$branch" ]; then
+    if git -C "$target" show-ref --verify --quiet refs/remotes/origin/main; then
+      branch="main"
+    elif git -C "$target" show-ref --verify --quiet refs/remotes/origin/master; then
+      branch="master"
+    else
+      fail "Could not determine default branch for $target. Add a branch field to the profile repo entry."
+    fi
+  fi
+
+  if git -C "$target" show-ref --verify --quiet "refs/heads/$branch"; then
+    git -C "$target" switch "$branch"
+  elif git -C "$target" show-ref --verify --quiet "refs/remotes/origin/$branch"; then
+    git -C "$target" switch -c "$branch" --track "origin/$branch"
+  else
+    fail "Branch $branch was not found on origin for $target"
   fi
 }
 
 clone_profile_repos() {
   local profile="$1"
   mkdir -p "$INSTALL_ROOT"
-  python3 - "$profile" "$CLONE_PROTOCOL" "$INCLUDE_PLUGIN" "$INCLUDE_PATCH" "$INCLUDE_DNS" <<'PY' | while IFS=$'	' read -r name url; do
+  python3 - "$profile" "$CLONE_PROTOCOL" "$INCLUDE_PLUGIN" "$INCLUDE_PATCH" "$INCLUDE_DNS" <<'PY' | while IFS=$'	' read -r name url branch; do
 import json, sys
 profile_path, protocol, include_plugin, include_patch, include_dns = sys.argv[1:6]
 with open(profile_path, 'r', encoding='utf-8') as f:
@@ -191,9 +228,9 @@ for repo in profile['repos']:
         continue
     if kind == 'dns' and include_dns != 'true':
         continue
-    print(f"{repo['name']}	{repo[protocol]}")
+    print(f"{repo['name']}	{repo[protocol]}	{repo.get('branch', '')}")
 PY
-    clone_or_pull_repo "$name" "$url"
+    clone_or_pull_repo "$name" "$url" "$branch"
   done
 }
 
