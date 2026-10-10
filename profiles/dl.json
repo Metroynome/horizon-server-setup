@@ -83,7 +83,8 @@
       "name": "horizon-deadlocked-patch",
       "kind": "patch",
       "https": "https://github.com/Horizon-Private-Server/horizon-deadlocked-patch.git",
-      "ssh": "git@github.com:Horizon-Private-Server/horizon-deadlocked-patch.git"
+      "ssh": "git@github.com:Horizon-Private-Server/horizon-deadlocked-patch.git",
+      "branch": "develop"
     },
     {
       "name": "horizon-deadlocked-middleware-plugin",
